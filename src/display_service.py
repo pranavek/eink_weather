@@ -70,13 +70,13 @@ class DisplayService:
         image = Image.new('1', (width, height), 255)
         draw = ImageDraw.Draw(image)
         
-        # --- Current Weather (Top Half) ---
+        # --- Current Weather ---
         # Icon
-        icon_size = 40
-        icon_x = 5
-        icon_y = 5
+        icon_size = 50
+        icon_x = 10
+        icon_y = 10
         
-        # Initialize icon drawer with weather icons font
+        # Initialize icon drawer
         font_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'fonts', 'weathericons-regular-webfont.ttf')
         icon_drawer = IconDrawer(draw, font_path, icon_size)
         
@@ -84,67 +84,56 @@ class DisplayService:
         is_day = current.get('is_day', 1)
         icon_drawer.draw_icon_for_code(code, icon_x, icon_y, icon_size, is_day)
         
-        # Temp
+        # Main Temp
         temp_c = current.get('temperature')
-        temp_f = (temp_c * 9/5) + 32
-        temp_text = f"{temp_c}°C / {int(temp_f)}°F"
+        # temp_f = (temp_c * 9/5) + 32
+        temp_text = f"{int(temp_c)}°C"
+        draw.text((70, 5), temp_text, font=self.font_temp, fill=0)
         
-        # Use a slightly smaller font for temp to fit nicely
-        draw.text((65, 10), temp_text, font=self.font_location, fill=0)
+        # High / Low
+        # daily_max/min are lists, get today's (index 0)
+        daily_max = daily.get('temperature_2m_max', [0])
+        daily_min = daily.get('temperature_2m_min', [0])
+        high = daily_max[0] if daily_max else 0
+        low = daily_min[0] if daily_min else 0
+        
+        # Using simple text arrows or H/L if font issues arise. 
+        # Montserrat should support ↑ ↓.
+        hl_text = f"↑{int(high)}° ↓{int(low)}°"
+        draw.text((170, 15), hl_text, font=self.font_detail, fill=0)
+
+        # Feels Like
+        app_temp = current.get('apparent_temperature')
+        feels_text = f"Feels: {int(app_temp)}°C"
+        draw.text((70, 45), feels_text, font=self.font_detail, fill=0)
+        
+        # UV Index
+        uv_max = daily.get('uv_index_max', [0])
+        uv_val = uv_max[0] if uv_max else 0
+        uv_text = f"UV: {uv_val}"
+        draw.text((170, 45), uv_text, font=self.font_detail, fill=0)
         
         # Wind
         wind_kmh = current.get('windspeed')
-        wind_mph = wind_kmh * 0.621371  # Convert km/h to mph
         wind_dir = current.get('winddirection', 0)
         def get_cardinal(d):
             dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
             ix = round(d / (360. / len(dirs)))
             return dirs[ix % len(dirs)]
         wind_cardinal = get_cardinal(wind_dir)
-        draw.text((65, 40), f"W: {wind_kmh} km/h ({int(wind_mph)} mph) {wind_cardinal}", font=self.font_detail, fill=0)
+        wind_text = f"Wind: {wind_kmh} km/h {wind_cardinal}"
+        draw.text((70, 70), wind_text, font=self.font_detail, fill=0)
 
-        # Divider between top and bottom
-        draw.line((0, 65, width, 65), fill=0, width=2)
-        
-        # --- Forecast (Bottom Half) ---
-        # We have daily data: time, weathercode, temperature_2m_max, temperature_2m_min
-        # We want to show today, tomorrow, day after (3 days)
-        
-        daily_time = daily.get('time', [])
-        daily_code = daily.get('weathercode', [])
-        daily_max = daily.get('temperature_2m_max', [])
-        daily_min = daily.get('temperature_2m_min', [])
-        
-        # Column width = width / 3
-        col_width = width // 3
-        
-        for i in range(min(3, len(daily_time))):
-            day_x = i * col_width
-            
-            # Date -> Day name
-            date_str = daily_time[i]
-            date_obj = datetime.strptime(date_str, '%Y-%m-%d')
-            day_name = date_obj.strftime('%a') # Mon, Tue...
-            
-            # Center text in column
-            # Day Name
-            bbox = draw.textbbox((0, 0), day_name, font=self.font_forecast)
+        # Severe Weather Alert
+        is_severe = weather_data.get('severe_weather', False)
+        if is_severe:
+            # Draw a black bar at the bottom
+            draw.rectangle((0, 95, width, height), fill=0)
+            alert_text = "! SEVERE WEATHER IN 24H !"
+            # Center the text
+            bbox = draw.textbbox((0, 0), alert_text, font=self.font_forecast)
             w = bbox[2] - bbox[0]
-            draw.text((day_x + (col_width - w)//2, 70), day_name, font=self.font_forecast, fill=0)
-            
-            # Icon
-            small_icon_size = 25
-            # For forecast, assume daytime (is_day=1) since we don't have hourly data
-            icon_drawer.draw_icon_for_code(daily_code[i], day_x + (col_width - small_icon_size)//2, 90, small_icon_size, is_day=1)
-            
-            # Temp Range (Max/Min)
-            # e.g. 20/15
-            t_max = daily_max[i]
-            t_min = daily_min[i]
-            temp_range = f"{int(t_max)}/{int(t_min)}"
-            bbox = draw.textbbox((0, 0), temp_range, font=self.font_forecast)
-            w = bbox[2] - bbox[0]
-            draw.text((day_x + (col_width - w)//2, 125), temp_range, font=self.font_forecast, fill=0)
+            draw.text(((width - w) // 2, 98), alert_text, font=self.font_forecast, fill=1) # fill=1 for white text on black
 
 
         # Rotate image 180 degrees
@@ -159,4 +148,21 @@ class DisplayService:
 if __name__ == "__main__":
     ds = DisplayService()
     # Test data
-    ds.update_display({'temperature': 20, 'windspeed': 10, 'weathercode': 1})
+    test_data = {
+        'current': {
+            'temperature': 20.5,
+            'apparent_temperature': 18.0,
+            'windspeed': 12.5,
+            'winddirection': 180,
+            'weathercode': 1,
+            'is_day': 1
+        },
+        'daily': {
+            'temperature_2m_max': [22.0],
+            'temperature_2m_min': [15.0],
+            'uv_index_max': [5.5],
+            'weathercode': [1]
+        },
+        'severe_weather': True
+    }
+    ds.update_display(test_data)
