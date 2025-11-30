@@ -7,6 +7,7 @@ class WeatherService:
         self.base_url = "https://api.open-meteo.com/v1/forecast"
 
     def get_current_weather(self, lat=None, lon=None):
+        params = {
             "latitude": lat if lat is not None else self.lat,
             "longitude": lon if lon is not None else self.lon,
             "current": "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m",
